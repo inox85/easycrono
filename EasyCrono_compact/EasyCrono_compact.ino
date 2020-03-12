@@ -1,20 +1,13 @@
-#define BuzzerPin 8
+#define BuzzerPin 3
 #define STRING
 //#define NUMBER
 #define SOUND
 //#define  SERIALDEBUG
-#define BLENGHT 10
-#define LED_1  A0
-#define LED_2 8
+#define BLENGHT 5
+#define LED_1  8
+#define LED_2 7
 
-//**********************************************************
-
-
-#include <SoftwareSerial.h>
- 
-int rxPin = A0;
-int txPin = A4;
-SoftwareSerial bluetooth(rxPin, txPin);
+//*********************************************************
 
 char cmd;
 const char Start = 's';                //Carattere corrispondente a comando di Start
@@ -32,13 +25,14 @@ const char SampleSend = 'd';           //Carattere corrispondente alla richiesta
 const char EndDataSend = 'e';          //Carattere che conferma l'avvenuta trasmissione di tutti i campioni relativi al tempo di reazione
 
 
-const int InPinStart = 5;             //Pin relativo alla fotocellula di Start
-const int InPinStop =  6;             //Pin relativo alla fotocellula di Stop             
-const int InPinJump = 7;              //Pin relativo alla pedana a contatto per il Jump Test
-const int OutPinOnSensor = 9;          //Pin relativo all'accensione del Accensione/Spegngimento dell'accelerometro
+const int InPinStart = 4;             //Pin relativo alla fotocellula di Start
+const int InPinStop =  5;             //Pin relativo alla fotocellula di Stop             
+const int InPinJump = 9;              //Pin relativo alla pedana a contatto per il Jump Test
+
 
 unsigned long lastConnection = 0;
 unsigned long connectionIntervall = 500;
+bool connect_status = false;
 
 int offsetX;                           //Parametro usato per settare lo zero dell'accelerometro al momento dell'accensione
 int offsetY;                           //Parametro usato per settare lo zero dell'accelerometro al momento dell'accensione
@@ -85,7 +79,6 @@ void setup()
 {
  
   Serial.begin(250000);                                  // Iniziallizzazione della seriale
-  bluetooth.begin(9600); //set baud rate 
   //******* SETTING OUTPUT ********                           
 
   //******* SETTING INPUT *********
@@ -95,148 +88,54 @@ void setup()
   digitalWrite(InPinStop,HIGH);
   pinMode(InPinJump, INPUT);
   digitalWrite(InPinJump,HIGH);
-  pinMode(OutPinOnSensor, OUTPUT);
   pinMode(LED_1, OUTPUT);
+  digitalWrite(LED_1,HIGH);
   pinMode(LED_2, OUTPUT);
+  digitalWrite(LED_2,HIGH);
+  
+  delay(1000);
+    
+  pinMode(LED_1, OUTPUT);
+  digitalWrite(LED_1,LOW);
+  pinMode(LED_2, OUTPUT);
+  digitalWrite(LED_2,LOW);
 
 
   bool FirstJump = true;                                 //Setta la variabile di controllo a true per far si che avvenga il controllo di persona stabile sulla pedana prima del test
 
-  analogReference(EXTERNAL);                             //Imposta di prelevare sul Pin AREF di arduino la tesione di riferimento per la conversione             
-
-radio.begin();
-
-setupRF();
-
-  if(radioNumber){
-    radio.openWritingPipe(addresses[1]);
-    radio.openReadingPipe(1,addresses[0]);
-  }else{
-    radio.openWritingPipe(addresses[0]);
-    radio.openReadingPipe(1,addresses[1]);
-  }
-  
-  // Start the radio listening for data
-  radio.startListening();
-
-  pinMode(BuzzerPin,OUTPUT); // Impostazione dei pin d'uscita
-  digitalWrite(BuzzerPin,LOW);
 }
 
 
-void setupRF()
-{
-
-radio.setPALevel( RF24_PA_MAX ) ; 
- 
-// Min speed (for better range I presume)
-//radio.setDataRate( RF24_250KBPS ) ; 
-radio.setDataRate( RF24_1MBPS ) ; 
- 
-// 8 bits CRC
-radio.setCRCLength( RF24_CRC_8 ) ; 
- 
-// Disable dynamic payloads 
-write_register(DYNPD,0); 
- 
-// increase the delay between retries & # of retries 
-radio.setRetries(15,15);
-
-}
 
 
 void loop()                                              //Loop
 {  
-    checkSerial();
-    if(!onReact){
+
     connection();
-    }
    
     SerialEvent();                                   //Verifica se sono presenti dati nel buffer della seriale
     
-    BlueThoothEvent();
-    
     TastoPremuto();                                  //Verifica se fotocellule o pedana di bosco connesse ai pin digitali sono premuti
     
-    //radioEvent();                                    //Verifica se è stato inviato un dato dalla fotocellula wireless (Attenzione: commentare nel caso si usino solo fotocellule cablate)
 }
+
 //****************************************** GESTIONE PULSANTI E BEEPER *******************************************************************
 
 
-void checkSerial()
-{   
-    while (!Serial)
-    {
-     digitalWrite(LED_2, LOW);
-    }
-
-     digitalWrite(LED_2, HIGH);
-  
-}
 
 void connection(){
   if(millis()-lastConnection >connectionIntervall){
     lastConnection = millis();
-   
     doConnect();
-    
   }
 }
 
-void BlueThoothEvent()
-{
-  char message;
-  if(bluetooth.available()){
-    message = char(bluetooth.read());
-    
-  }
-   
-   if(message != ""){                             //Tutti tutte le funzioni che vengono chiamate successivamente al alla ricezione del comando seriale restituiscono un ECHO al per notificarne l'avvenuta esecuzione
-                                           //Se il programma non riceve correttamente l'ECHO del comando viene generato un errore di connessione
-    cmd = message;
-    
-    if(cmd == Connect){
-  
-      doConnect();                   //Feedback di connessione che viene fornito al momento della selezione della porta da parte del programma su PC
-    } 
-    if(cmd == Start){
-  
-      doStart();                     //Esecuzione del comando di Start che si occupa di restituire il valore dei millisecondi a quell'istante
-    }
-    else if(cmd == Reset)
-    {
-  
-      doReset();                     //Resetta il JumpTest reimpostando il test di persona stabile sulla pedana prima dell'inizio del Jump Test
-    }
-    else if(cmd == Stop)
-    {
-  
-      doStop();                      //Esecuzione del comando di Stop che si occupa di restituire il valore dei millisecondi a quell'istante
-    }
-    else if(cmd == ShortBeep)
-    {
 
-      Beep();                        //Funzione BEEP
-    }
-     else if(cmd == ReactTime)
-    {
-      onReact = true;
-      doReactTime();                 //Chiamata della funzione che per Test su Tempo di Reazione
-    }
-    else if(cmd == ReactTimeSpeed)
-    {
-      onReact = true;
-      doReactTimeSpeed();           //Chiamata della funzione che per Test su Tempo di Reazione insieme al Test di Velocità
-    }
-    else if(cmd == SampleSend)
-    {
-      
-      Transfer();                   //Chiamata scatenate dalla richiesta di trasferimento del campione successivo fino ad esaurimento dei campioni
-      
-    }
-   }
-   
+void connection_signal(){
+  connect_status = !connect_status;
+  digitalWrite(LED_2, connect_status);
 }
+
 
 void SerialEvent(){                                    //Verifica del contenuto del buffer di ricezione seriale e interpretazione dell'eventuale comando
 
@@ -245,16 +144,15 @@ void SerialEvent(){                                    //Verifica del contenuto 
 		cmd = Serial.read();
 		
 		if(cmd == Connect){
-  
-			doConnect();                   //Feedback di connessione che viene fornito al momento della selezione della porta da parte del programma su PC
+			//doConnect();                   //Feedback di connessione che viene fornito al momento della selezione della porta da parte del programma su PC
+      connection_signal();
 		} 
 		if(cmd == Start){
   
 			doStart();                     //Esecuzione del comando di Start che si occupa di restituire il valore dei millisecondi a quell'istante
 		}
 		else if(cmd == Reset)
-		{
-  
+		{ 
 			doReset();                     //Resetta il JumpTest reimpostando il test di persona stabile sulla pedana prima dell'inizio del Jump Test
 		}
 		else if(cmd == Stop)
@@ -288,75 +186,6 @@ void SerialEvent(){                                    //Verifica del contenuto 
 }
 
 
-void radioEvent()
-{
-
-      unsigned long got_time;
-      
-      if( radio.available()){
-        
-     
-#ifdef STRING
-
-      int len=0;
-      char gotmsg[]="";
-     
-      len = radio.getDynamicPayloadSize();
-      radio.read( &gotmsg, len );     
-  
-      
-      //Serial.println(gotmsg); 
-      String str(gotmsg);
-      #ifdef SERIALDEBUG
-      Serial.println(str);
-      #endif
-      int commaIndex = str.indexOf(';');
-      String _dly = str.substring(0,commaIndex);
-      String msgId = str.substring(commaIndex+1);
-      
-      
-      #ifdef SERIALDEBUG
-
-      
-      Serial.println(str);
-      Serial.println(_dly);
-      Serial.println(msgId);
-      
-      #endif
-      
-      if(_dly = "b")
-      {
-        Echo(str);
-      }
-      else
-      {
-      
-        if(msgId != prevId)
-        {
-          prevId = msgId;
-          unsigned long dly = _dly.toInt();
-          doStart(dly);
-        }
-      
-      }
-                                                                 
-#endif                                                                    // Variable for the received timestamp
-
-#ifdef NUMBER
-      while (radio.available()) {
-      // While there is data ready
-      radio.read( &got_time, sizeof(unsigned long) );             // Get the payload
-      }
-     
-      radio.stopListening();                                        // First, stop listening so we can talk   
-      radio.write( &got_time, sizeof(unsigned long) );              // Send the final one back.      
-      radio.startListening();                                       // Now, resume listening so we catch the next packets.     
-      Serial.print(F("Sent response "));
-      Serial.println(got_time);   
-#endif
-     }
-  
-}
 
 
 void Beep(){                                         //funzione che aziona il buzzer
@@ -374,13 +203,23 @@ void Beep(){                                         //funzione che aziona il bu
 void TastoPremuto(){                                  //Verifica della variazione di stato di tutti i sensori
 
 	if(AntiRimbalzo(InPinStart)){
+    digitalWrite(LED_1, HIGH);
 		doStart();
 		AttesaRilascio(InPinStart);
+	}else
+	{
+	  digitalWrite(LED_1, LOW);
 	}
+ 
 	if(AntiRimbalzo(InPinStop)){
+    digitalWrite(LED_1, HIGH);
 		doStop();
 		AttesaRilascio(InPinStop);
+	}else
+	{
+	  digitalWrite(LED_1, LOW);
 	}
+ 
 	if(AntiRimbalzo(InPinJump)){               //Per quanto riguarda il Jump Test viene trasmesso l'istante della pressione della pedana e quello del rilascio della pedana in modo da poter calcolare il tempo di contatto
 		doStopJump();
 		AttesaRilascioJump(InPinJump);
@@ -443,13 +282,11 @@ void Received(char cmd){
 
 void doConnect(){                                                  //ECHO del segnale connessione per notifica al programma su PC
 	
-        Echo("c;");
+     Echo("c;");
 }
 
 
 void doReactTime(){
-
-       AccendiSensore();                                           //Accende l'accelerometro prima di iniziare il test 
        Echo("t;0000;");
        randomSeed(sqrt(square(analogRead(A0)-offsetX)+square(analogRead(A1)-offsetY)+square(analogRead(A2)-offsetZ)));
        delay(random(2500,5000));                                   //Randomizza un tempo che va da 2,5 secondi a 5 secondi
@@ -467,9 +304,8 @@ void doReactTime(){
        Beep();
        CountTransfer = 0;
        Echo("e;0000;");
-       
        Beep();
-       SpengiSensore();                                                             //Spenge l'accelerometro a test terminato
+      
       
 }
 
@@ -502,15 +338,6 @@ void doReactTimeSpeed(){
        
 }
 
-void AccendiSensore()
-{
-  digitalWrite(OutPinOnSensor,HIGH);
-}
-
-void SpengiSensore()
-{
-  digitalWrite(OutPinOnSensor,LOW);
-}
 
 void Calibrate()                          //Associa ai valori di offset i valori iniziali delle tre uscite dell'accelerometro per poter fare l'azzeramento
 {
@@ -581,9 +408,6 @@ Echo("b;"+ level);
 
 void Echo(String Echo){                                    //Echo generico al quale viene passato il relativo comando ricevuto
 	      Serial.println(Echo);
-        if(!onReact){
-        bluetooth.println(Echo);
-        }
         SerialClear();
         
 }
@@ -598,11 +422,6 @@ void SerialClear(){                                        //Svuotamento del Buf
         }
         Serial.flush();
         
-        while(bluetooth.available())
-        {
-           bluetooth.read();
-        }
-        bluetooth.flush();
         
 }
 //***************************************** PROTOCOLLI INVIO ********************************************************************
